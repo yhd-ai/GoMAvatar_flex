@@ -167,10 +167,13 @@ def update_lr(optimizer, iter_step, cfg):
     decay_rate = 0.1
     decay_value = decay_rate ** (iter_step / cfg.lr_decay_steps)
     for param_group in optimizer.param_groups:
+        #print(param_group['name'])
+        #print(cfg)
         if hasattr(cfg.lr, param_group['name']):
             base_lr = getattr(cfg.lr, param_group['name'])
             new_lrate = base_lr * decay_value
         else:
+            #print(cfg)
             new_lrate = cfg.train.lr * decay_value
         param_group['lr'] = new_lrate
 
@@ -321,7 +324,8 @@ def main(args):
                 i_iter=n_iters,
                 bgcolor=data['bgcolor'],
                 tb=tb_logger)
-
+            #print(model.barycentric_weight[0].sum())
+            #print(model.vertices[0].sum())
             if cfg.random_bgcolor:
                 rgb = unpack(rgb, mask, data['bgcolor'])
 

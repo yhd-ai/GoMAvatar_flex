@@ -72,6 +72,8 @@ class Model(nn.Module):
 
 		# gaussian parameters
 		self.vertices = nn.Parameter(torch.tensor(canonical_info['canonical_vertex']).float().transpose(1, 0))
+		init_barycentric_weight = torch.ones([2, self.faces.shape[0]]).float() * (1/3)
+		self.barycentric_weight = nn.Parameter(init_barycentric_weight)
 		if model_cfg.canonical_geometry.deform_so3:
 			self.so3 = nn.Parameter(torch.zeros([3, self.faces.shape[0]]).float())
 		else:
@@ -154,7 +156,9 @@ class Model(nn.Module):
 			self.lbs_weights = nn.Parameter(torch.tensor(attributes['weights']).permute(1, 0).to(self.lbs_weights.device))
 		else:
 			self.lbs_weights = torch.tensor(attributes['weights']).permute(1, 0).to(self.lbs_weights.device)
-
+		bary_sub = self.barycentric_weight[..., None].repeat(1, 1, 4).reshape(self.barycentric_weight.shape[0], -1)
+		self.barycentric_weight = nn.Parameter(bary_sub)
+		print(self.barycentric_weight.shape)
 		appearance_feats = appearance_feats[..., None].repeat(1, 1, 4).reshape(appearance_feats.shape[0], -1)
 		self.appearance_module.set(appearance_feats)
 
@@ -222,8 +226,15 @@ class Model(nn.Module):
 
 		mesh_canonical = Meshes(vertices_canonical.permute(1, 0).unsqueeze(0), self.faces.unsqueeze(0))
 		mesh_observation = Meshes(vertices_observation.permute(1, 0).unsqueeze(0), self.faces.unsqueeze(0))
-		xyz_observation = vertices_observation.permute(1, 0)[self.faces.reshape(-1)].reshape(F, 3, -1).mean(dim=1)
-
+		#print(vertices_observation.shape)
+		#xyz_observation = vertices_observation.permute(1, 0)[self.faces.reshape(-1)].reshape(F, 3, -1).mean(dim=1)
+		bary = torch.zeros(3,self.barycentric_weight.shape[1],device=self.barycentric_weight.device)
+		bary[:2,:] = self.barycentric_weight
+		bary[2,:] = 1 - torch.sum(bary[0:2,:], dim=0) 
+		#print(bary.shape)
+		xyz_observation = vertices_observation.permute(1, 0)[self.faces.reshape(-1)].reshape(F, 3, -1)
+		xyz_observation = torch.einsum('nij,ni->nj', xyz_observation, bary.permute(1,0))
+		#print(xyz_observation.shape)
 		# get covariance matrix in observation space for rendering
 		S = torch.diag_embed(self.scale.permute(1, 0))
 		R = so3_exp_map(self.so3.permute(1, 0))
@@ -311,7 +322,7 @@ class Model(nn.Module):
 		param_groups.append({'name': 'canonical_geometry_xyz', 'params': self.vertices, 'lr': cfg.lr.canonical_geometry_xyz})
 		param_groups.append({'name': 'canonical_geometry', 'params': self.scale, 'lr': cfg.lr.canonical_geometry})
 		param_groups.append({'name': 'canonical_geometry', 'params': self.so3, 'lr': cfg.lr.canonical_geometry})
-
+		param_groups.append({'name': 'barycentric_weight', 'params': self.barycentric_weight, 'lr':cfg.lr.barycentric_weight})
 		if self.non_rigid_module is not None:
 			param_groups.append(
 				{'name': 'non_rigid', 'params': self.non_rigid_module.parameters(), 'lr': cfg.lr.non_rigid})

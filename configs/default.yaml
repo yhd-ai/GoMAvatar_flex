@@ -96,6 +96,7 @@ train:
     canonical_geometry_xyz: 0.005
     non_rigid: 0.005
     pose_refinement: 0.0005
+    barycentric_weight: 0.0005
     shadow: 0.005
 
   losses:
